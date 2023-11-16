@@ -1,35 +1,27 @@
-from flask import Flask, request, render_template, jsonify
 import nmap
-import json
 import logging
 import ipaddress
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from pymetasploit3.msfrpc import MsfRpcClient
-from tqdm import tqdm
-import argparse
-import os
-import signal
-import sys
-import time
 import socket
-
-app = Flask(__name__)
+from pymetasploit3.msfrpc import MsfRpcClient
+import sys
+import argparse
+import json
 
 # Function to set up logging
 def setup_logging(log_file=None, verbose=False):
     log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG if verbose else logging.INFO)
-    
+
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(log_formatter)
     logger.addHandler(console_handler)
-    
+
     if log_file:
         file_handler = logging.handlers.RotatingFileHandler(log_file, maxBytes=1024 * 1024, backupCount=3)
         file_handler.setFormatter(log_formatter)
         logger.addHandler(file_handler)
-    
+
     return logger
 
 # Function to validate IP network
@@ -84,35 +76,39 @@ def scan_host(host, ports, logger, retry_count=3, timeout=600):
             break
     return {}
 
-# Flask route for the home page
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    if request.method == 'POST':
-        # Extract data from form
-        hosts = request.form.get('hosts')
-        ports = request.form.get('ports', '22-80')
-        # ... (other form fields)
+# Establish a connection to the MSF RPC server
+def msf_connect(password, server='127.0.0.1', port=55553):
+    try:
+        client = MsfRpcClient(password, server=server, port=port)
+        return client
+    except Exception as e:
+        print(f"Failed to connect to Metasploit RPC: {e}")
+        sys.exit(1)
 
-        # Prepare arguments for scanning
-        args = {
-            'hosts': hosts.split(','),  # Split the hosts by comma
-            'ports': ports,
-            # ... (other arguments)
-        }
+# Function to check if a module exists in Metasploit
+def check_module_exists(client, module_type, module_name):
+    modules = client.modules.list[module_type]
+    return module_name in modules
 
-        # Call your main scanning function here with the provided arguments
-        results = scan_network(args)
-        
-        # Return the results as JSON or render another template
-        return jsonify(results)
+# Main function to handle command line arguments and call the scan functions
+def main():
+    parser = argparse.ArgumentParser(description="Network Scanner Tool")
+    parser.add_argument('--hosts', type=str, required=True, help='Comma-separated list of hosts to scan')
+    parser.add_argument('--ports', type=str, default='22-80', help='Port range to scan, e.g., "22-80"')
+    parser.add_argument('--log-file', type=str, help='Path to the log file')
+    parser.add_argument('--verbose', action='store_true', help='Enable verbose logging')
+    parser.add_argument('--msf-password', type=str, required=True, help='Password for the Metasploit RPC server')
+    parser.add_argument('--msf-module-type', type=str, required=True, help='Type of the Metasploit module to check')
+    parser.add_argument('--msf-module-name', type=str, required=True, help='Name of the Metasploit module to check')
 
-    return render_template('index.html')
+    args = parser.parse_args()
 
-# Function to start the scanning (this is a placeholder, modify according to your script's logic)
-def scan_network(args):
-    # Your scanning logic goes here
-    # For example, you might call scan_host() for each host
-    return {"result": "Scanning completed"}
+    # Setup logging
+    logger = setup_logging(log_file=args.log_file, verbose=args.verbose)
 
-if __name__ == '__main__':
-    app.run(debug=True)
+    # Validate the hosts and port range
+    hosts = args.hosts.split(',')
+    ports = args.ports
+
+    if not all(is_valid_ip_network(host) for host in hosts):
+        logger.error("Invalid host list provided.")
