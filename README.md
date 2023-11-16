@@ -1,7 +1,9 @@
 Description
+
 This Network Scan Utility is a Python script that leverages nmap to perform network scans and interacts with the Metasploit framework. It provides a command-line interface for specifying targets, ports, and various other options. The script supports output in different formats and includes features like retries for failed scans, verbose logging, and signal handling for graceful termination.
 
 Features
+
 Perform nmap scans on specified hosts or IP ranges.
 Check results against the NVD and Metasploit databases.
 Retry failed scans a specified number of times.
@@ -22,12 +24,14 @@ sh
 Copy code
 git clone https://github.com/ScarsAlemany/PyNmap
 cd network-scan-utility
+
 (Optional) Install the required Python packages:
 
 sh
 Copy code
 pip install -r requirements.txt
 Usage
+
 Run the script with the following command, replacing the placeholder arguments with your own:
 
 sh
@@ -46,6 +50,7 @@ Options:
 --output-format FORMAT: Output format for scan results (json/csv/html) (default: "json").
 --timeout TIMEOUT: Timeout for each scan in seconds (default: 600).
 --output-directory OUTPUT_DIR: Directory to save scan results and logs (default: "output").
+
 Example:
 
 sh
