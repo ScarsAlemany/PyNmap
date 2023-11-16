@@ -2,6 +2,8 @@ Description
 
 This Network Scan Utility is a Python script that leverages nmap to perform network scans and interacts with the Metasploit framework. It provides a command-line interface for specifying targets, ports, and various other options. The script supports output in different formats and includes features like retries for failed scans, verbose logging, and signal handling for graceful termination.
 
+It is designed to stay undetected for as long as possible. Current tests show that IDS solutions are completely useless against it.
+
 Features
 
 Perform nmap scans on specified hosts or IP ranges.
