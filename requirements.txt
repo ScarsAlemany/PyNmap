@@ -1,0 +1,4 @@
+Flask
+python-nmap
+pymetasploit3
+tqdm
