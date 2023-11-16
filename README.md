@@ -20,41 +20,45 @@ pymetasploit3: Can be installed via pip install pymetasploit3
 Installation
 Clone the repository or download the script directly to your local machine.
 
-sh
-Copy code
 git clone https://github.com/ScarsAlemany/PyNmap
 cd network-scan-utility
 
 (Optional) Install the required Python packages:
 
-sh
-Copy code
 pip install -r requirements.txt
+
 Usage
 
 Run the script with the following command, replacing the placeholder arguments with your own:
 
-sh
-Copy code
 python network_scan.py [hosts...] [options]
 Options:
 
 --ports PORT_RANGE: Specify the ports to scan (default: '22-80').
+
 --output OUTPUT_FILE: Set the output file for the scan results (default: 'scan_results.json').
+
 --msf-password PASSWORD: The password for Metasploit RPC (required).
+
 --msf-port PORT: Metasploit RPC port (default: 55553).
+
 --max-concurrent-scans MAX_SCANS: Maximum number of concurrent scans (default: 10).
+
 --log-file LOG_FILE: Log file to save script output (optional).
+
 --verbose: Enable verbose mode for debugging.
+
 --retry-count RETRIES: Number of retry attempts for failed scans (default: 3).
+
 --output-format FORMAT: Output format for scan results (json/csv/html) (default: "json").
+
 --timeout TIMEOUT: Timeout for each scan in seconds (default: 600).
+
 --output-directory OUTPUT_DIR: Directory to save scan results and logs (default: "output").
+
 
 Example:
 
-sh
-Copy code
 python network_scan.py 192.168.1.0/24 --ports 22-443 --output-directory scan_data --log-file scan.log --verbose
 License
 This script is open source and licensed under the MIT License.
