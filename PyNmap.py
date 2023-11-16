@@ -1,3 +1,4 @@
+from flask import Flask, request, render_template, jsonify
 import nmap
 import json
 import logging
@@ -10,38 +11,26 @@ import os
 import signal
 import sys
 import time
+import socket
+
+app = Flask(__name__)
 
 # Function to set up logging
 def setup_logging(log_file=None, verbose=False):
-    level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(level=level, format='%(asctime)s - %(levelname)s - %(message)s')
+    log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+    
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(log_formatter)
+    logger.addHandler(console_handler)
     
     if log_file:
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(level)
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(formatter)
+        file_handler = logging.handlers.RotatingFileHandler(log_file, maxBytes=1024 * 1024, backupCount=3)
+        file_handler.setFormatter(log_formatter)
         logger.addHandler(file_handler)
     
     return logger
-
-# Function to parse command line arguments
-def parse_arguments():
-    parser = argparse.ArgumentParser(description="Nmap Scan and Check against NVD and Metasploit")
-    parser.add_argument('hosts', nargs='+', help="Hosts to scan (e.g., '192.168.1.0/24')", metavar='HOST')
-    parser.add_argument('--ports', help="Ports to scan (e.g., '22-80')", default='22-80', metavar='PORT_RANGE')
-    parser.add_argument('--output', help="Output file to save the scan results", default="scan_results.json", metavar='OUTPUT_FILE')
-    parser.add_argument('--msf-password', help="Metasploit RPC password", required=True, metavar='PASSWORD')
-    parser.add_argument('--msf-port', help="Metasploit RPC port", default=55553, metavar='PORT', type=int)
-    parser.add_argument('--max-concurrent-scans', help="Maximum number of concurrent scans", default=10, type=int, metavar='MAX_SCANS')
-    parser.add_argument('--log-file', help="Log file to save script output (optional)", metavar='LOG_FILE')
-    parser.add_argument('--verbose', help="Enable verbose mode for debugging", action='store_true')
-    parser.add_argument('--retry-count', help="Number of retry attempts for failed scans", default=3, type=int, metavar='RETRIES')
-    parser.add_argument('--output-format', help="Output format for scan results (json/csv/html)", default="json", metavar='FORMAT')
-    parser.add_argument('--timeout', help="Timeout for each scan in seconds", default=600, type=int, metavar='TIMEOUT')
-    parser.add_argument('--output-directory', help="Directory to save scan results and logs", default="output", metavar='OUTPUT_DIR')
-    return parser.parse_args()
 
 # Function to validate IP network
 def is_valid_ip_network(address):
@@ -59,12 +48,33 @@ def is_valid_port_range(port_range):
     except ValueError:
         return False
 
+# Function to check if a host is up using ICMP ping
+def is_host_up(host):
+    try:
+        scanner = nmap.PortScanner()
+        scanner.scan(hosts=host, arguments='-sn', timeout=60)
+        return host in scanner.all_hosts()
+    except Exception as e:
+        logger.error(f"Error checking if host {host} is up: {e}")
+        return False
+
+# Function to check if a port is open using a socket connection
+def is_port_open(host, port, timeout=10):
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(timeout)
+            result = sock.connect_ex((host, port))
+            return result == 0
+    except Exception as e:
+        logger.error(f"Error checking if port {port} is open on host {host}: {e}")
+        return False
+
 # Function to scan a single host
 def scan_host(host, ports, logger, retry_count=3, timeout=600):
     for _ in range(retry_count):
         try:
             scanner = nmap.PortScanner()
-            scanner.scan(hosts=host, arguments=f'-p {ports} -sV', timeout=timeout)
+            scanner.scan(hosts=host, arguments=f'-p {ports} -sV -f', timeout=timeout)
             return scanner[host]
         except nmap.PortScannerError as e:
             logger.error(f"Error scanning host {host}: {e}")
@@ -74,77 +84,35 @@ def scan_host(host, ports, logger, retry_count=3, timeout=600):
             break
     return {}
 
-# Main function
-def main():
-    args = parse_arguments()
-    logger = setup_logging(args.log_file, args.verbose)
+# Flask route for the home page
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        # Extract data from form
+        hosts = request.form.get('hosts')
+        ports = request.form.get('ports', '22-80')
+        # ... (other form fields)
 
-    def signal_handler(sig, frame):
-        logger.info("Scan interrupted by the user.")
-        sys.exit(0)
+        # Prepare arguments for scanning
+        args = {
+            'hosts': hosts.split(','),  # Split the hosts by comma
+            'ports': ports,
+            # ... (other arguments)
+        }
 
-    signal.signal(signal.SIGINT, signal_handler)
+        # Call your main scanning function here with the provided arguments
+        results = scan_network(args)
+        
+        # Return the results as JSON or render another template
+        return jsonify(results)
 
-    # Validate IP range and port range
-    if not all(is_valid_ip_network(host) for host in args.hosts):
-        logger.error("Invalid IP range format.")
-        exit(1)
+    return render_template('index.html')
 
-    if not is_valid_port_range(args.ports):
-        logger.error("Invalid port range format.")
-        exit(1)
+# Function to start the scanning (this is a placeholder, modify according to your script's logic)
+def scan_network(args):
+    # Your scanning logic goes here
+    # For example, you might call scan_host() for each host
+    return {"result": "Scanning completed"}
 
-    # Initialize Metasploit RPC Client
-    try:
-        msf = MsfRpcClient(args.msf_password, port=args.msf_port)
-    except Exception as e:
-        logger.error(f"Failed to initialize Metasploit RPC client: {e}")
-        exit(1)
-
-    # Set up ThreadPoolExecutor for concurrent scanning
-    try:
-        with ThreadPoolExecutor(max_workers=args.max_concurrent_scans) as executor:
-            # Dictionary to store future to host mappings
-            future_to_host = {executor.submit(scan_host, host, args.ports, logger, args.retry_count, args.timeout): host for host in args.hosts}
-            # Use tqdm for progress indication
-            progress_bars = tqdm(as_completed(future_to_host), total=len(args.hosts), desc=f'Scanning (0/{len(args.hosts)})', unit='host')
-            completed_scans = 0
-
-            # Result dictionary
-            results = {}
-            # Collect results as they are completed
-            for future in progress_bars:
-                host = future_to_host[future]
-                try:
-                    result = future.result()
-                    if result:
-                        results[host] = result
-                    completed_scans += 1
-                    progress_bars.set_description(f'Scanning ({completed_scans}/{len(args.hosts)})')
-                except Exception as e:
-                    logger.error(f"Error obtaining scan result for {host}: {e}")
-                    results[host] = {}
-
-        # Create the output directory if it doesn't exist
-        output_directory = args.output_directory
-        os.makedirs(output_directory, exist_ok=True)
-
-        # Save or process results based on the selected output format
-        output_file_path = os.path.join(output_directory, args.output)
-        with open(output_file_path, 'w') as file_out:
-            if args.output_format == "json":
-                json.dump(results, file_out, indent=4)
-                logger.info(f"Scan results have been saved to {output_file_path}.")
-            elif args.output_format == "csv":
-                # Implement CSV output format here
-                pass
-            elif args.output_format == "html":
-                # Implement HTML output format here
-                pass
-            else:
-                logger.error("Invalid output format. Supported formats: json, csv, html")
-    except KeyboardInterrupt:
-        logger.info("Scan interrupted by the user.")
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    app.run(debug=True)
